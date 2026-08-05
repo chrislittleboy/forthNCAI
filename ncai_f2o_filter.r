@@ -4,9 +4,9 @@ library(terra)
 library(ggplot2)
 setwd("/home/miell/Desktop/FORTH2O Data Specialist")
 alldata <- list.files("Data/NCAI", 
-					pattern = ".csv", full = TRUE) |>
-	lapply(fread)
-	
+                      pattern = ".csv", full = TRUE) |>
+  lapply(fread)
+
 # FORTH2O area of interest
 f2oaoi <- read_sf("Data/gov/census/geog/f2o/f2oaoi.shp")
 # Higher geography
@@ -15,12 +15,12 @@ hg <- read_sf("Data/gov/census/outputs/hg.shp")
 f2o.hg <- st_intersection(f2oaoi, hg)
 
 mask.by.fwb <- function(x) {
-	mask(crop(x))}
-	
+  mask(crop(x))}
+
 allnames <- lapply(list.files("Data/NCAI", pattern = ".csv"), 
-	function(X) gsub(".csv", "", X)) |>
-	unlist()
-	
+                   function(X) gsub(".csv", "", X)) |>
+  unlist()
+
 alldata <- setNames(alldata, allnames)
 #### Spatial filtering by Forth Water Basin ####
 
@@ -34,7 +34,7 @@ fwb.bw.loc <- c(
   "Portobello (West)",
   "Portobello (Central)",
   "Fisherrow Sands",
-
+  
   # East Lothian Coastal
   "Longniddry",
   "Seton Sands",
@@ -49,11 +49,11 @@ fwb.bw.loc <- c(
   "Whitesands",
   "Thorntonloch",
   "Pease Bay",
-
+  
   # Berwick Coastal / Eye Water
   "Coldingham",
   "Eyemouth",
-
+  
   # South Fife Coastal
   "Aberdour (Silversands)",
   "Aberdour Harbour (Black Sands)",
@@ -112,14 +112,15 @@ alldata[["Outdoor visits per week"]] <- merge(
   alldata[["Outdoor visits per week"]],
   la.ref, 
   by.x = "la", by.y = "code")
-outd <- st_as_sf(alldata[["Outdoor visits per week"]], coords = c("station_carteasting", "station_cartnorthing"), 
-                 crs = 27700) |>
-  st_intersection(f2o.hg)
+f2o.ca <- c("East Lothian", "Midlothian", "West Lothian", "Edinburgh", 
+            "Falkirk", "Stirling", "Clack", "Fife")
+
+outd <- subset(alldata[["Outdoor visits per week"]], grepl(paste0(f2o.ca, collapse = "|"), area))
 # River level (Stage)
 stag <- st_as_sf(alldata[["River level (Stage)"]], coords = c("station_carteasting", "station_cartnorthing"), 
                  crs = 27700) |>
   st_intersection(f2o.hg)
 # Water quality
 wq <- st_as_sf(alldata[["Water Quality"]], coords = c("EASTING", "NORTHING"), 
-                       crs = 27700) |>
+               crs = 27700) |>
   st_intersection(f2o.hg)
