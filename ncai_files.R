@@ -196,4 +196,7 @@ ngr2en <- data.table(Quadrant = c("HU", "HY", "NB", "NC", "ND", "NF", "NG", "NH"
 abstractions[i = , j = c("Quadrant", "Easting", "Northing") := tstrsplit(NGR, " "), by = ]
 abstractions <- merge(ngr2en, abstractions, by = "Quadrant")
 abstractions[i = , j = `:=`(Easting = paste0(EastID, Easting), Northing = paste0(NorthID, Northing))]
+# multiple abstraction points per authorisation
+# sum them up
+abstractions[i = , j = sum(`Annual Volume`), by = list(`Auth No`, Year)]
 fwrite(abstractions, "./Data/NCAI/Abstractions.csv")
