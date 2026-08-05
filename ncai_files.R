@@ -192,6 +192,7 @@ ngr2en <- data.table(Quadrant = c("HU", "HY", "NB", "NC", "ND", "NF", "NG", "NH"
                      NorthID = c("11", "10", rep("9", 3), rep("8", 5), rep("7", 3), 
                                rep("6", 3), rep("5", 2))
                      )
+# reconstruct metres from original NGR encoding
 abstractions[i = , j = c("Quadrant", "Easting", "Northing") := tstrsplit(NGR, " "), by = ]
 abstractions <- merge(ngr2en, abstractions, by = "Quadrant")
 abstractions[i = , j = `:=`(Easting = paste0(EastID, Easting), Northing = paste0(NorthID, Northing))]
