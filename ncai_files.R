@@ -4,7 +4,7 @@ library(rvest)
 library(readxl)
 
 ###### DOWNLOANDING AND PROCESSING DATA TO COMPUTE NCAI
-
+setwd("/home/miell/Desktop/FORTH2O Data Specialist")
 #### Outdoor visits per week ####
 # get file paths for social_public datasets
 ovpw.folder <- "./Data/NCAI/Outdoor visits per week"
@@ -163,6 +163,36 @@ list.files("./Data/NCAI/Fishing",
 	fwrite("./Data/NCAI/Fishery Statistics.csv")
 #### Butterflies
 # Read a large csv file
-butterflies <- fread("./Data/NCAI/0000746-260623161305970.csv")
+butterflies <- fread("./Data/0000746-260623161305970.csv")
 butterflies <- butterflies[stateProvince == "Scotland"]
 fwrite(butterflies, "./Data/NCAI/Butterflies.csv")
+#### Water abstraction levels
+# read files, 2008 to 2025
+abstractions <- list.files("./Data/NCAI/f0199354_docabd3e574d8_abstraction_returns/Abstraction Returns",
+                           full.names = TRUE) |>
+  lapply(function(X) read_excel(X, sheet = length(excel_sheets(X)))) |>
+  lapply(as.data.table) 
+# abstraction point geographies
+abstr.coords <- read_excel("./Data/NCAI/f0199354_docabd3e574d8_abstraction_returns/F0201397 Authorised Abstractions.xlsx") |>
+  as.data.table()
+# standardise column names with a for loop
+for(i in 1:length(abstractions)) {
+  colnames(abstractions[[i]])[grep("Annual Volume", colnames(abstractions[[i]]), ignore.case = TRUE)] <- "Annual Volume"
+  colnames(abstractions[[i]])[grep("Authorisation", colnames(abstractions[[i]]), ignore.case = TRUE)] <- "Authorisation"
+  colnames(abstractions[[i]])[grep("Abstraction Point", colnames(abstractions[[i]]), ignore.case = TRUE)] <- "Abstraction Point"
+}
+# join by authorisation number to get coordinates
+abstractions <- rbindlist(abstractions, use.names = TRUE, fill = TRUE)[, 1:4] |>
+  merge(abstr.coords[, list(`Auth No`, NGR)], y = _, by.x = "Auth No", by.y = "Authorisation")
+# SEPA NGR to easting-northing
+ngr2en <- data.table(Quadrant = c("HU", "HY", "NB", "NC", "ND", "NF", "NG", "NH", "NJ", "NK", 
+                              "NM", "NN", "NO", "NR", "NS", "NT", "NX", "NY"),
+                     EastID = c("4", "3", "1", "2", "3", "", "1", "2", "3", "4", 
+                              "1", "2", "3", "1", "2", "3", "2", "3"),
+                     NorthID = c("11", "10", rep("9", 3), rep("8", 5), rep("7", 3), 
+                               rep("6", 3), rep("5", 2))
+                     )
+abstractions[i = , j = c("Quadrant", "Easting", "Northing") := tstrsplit(NGR, " "), by = ]
+abstractions <- merge(ngr2en, abstractions, by = "Quadrant")
+abstractions[i = , j = `:=`(Easting = paste0(EastID, Easting), Northing = paste0(NorthID, Northing))]
+fwrite(abstractions, "./Data/NCAI/Abstractions.csv")
