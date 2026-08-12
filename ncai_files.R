@@ -30,9 +30,15 @@ lapply(mylist, setnames,
 # binding everything into a single data.table
 mydata <- rbindlist(mylist, use.names = TRUE, fill = TRUE, 
                     idcol = "year")
-					
 fwrite(mydata, "./Data/NCAI/Outdoor visits per week.csv")
-
+# SEPA NGR to easting-northing
+ngr2en <- data.table(Quadrant = c("HU", "HY", "NB", "NC", "ND", "NF", "NG", "NH", "NJ", "NK", 
+                                  "NM", "NN", "NO", "NR", "NS", "NT", "NX", "NY"),
+                     EastID = c("4", "3", "1", "2", "3", "", "1", "2", "3", "4", 
+                                "1", "2", "3", "1", "2", "3", "2", "3"),
+                     NorthID = c("11", "10", rep("9", 3), rep("8", 5), rep("7", 3), 
+                                 rep("6", 3), rep("5", 2))
+)
 #### Groundwater levels ####
 station.lookup <- read_html("https://timeseries.sepa.org.uk/KiWIS/KiWIS?service=kisters&type=queryServices&datasource=0&request=getStationList&returnfields=station_name,station_id,station_carteasting,station_cartnorthing") |>
 	html_table(header = TRUE) |>
@@ -81,7 +87,8 @@ t.reader <- function(x, readfrom = 1) {
 	colnames(x) <- c('Timestamp', 'Value')
 	x[i = , j = Value := as.numeric(Value), by = ]
 	return(x)
-	}
+}
+
 stage <- lapply(stage.urls, 
 	t.reader, readfrom = 5) |>
 	setNames(ts.ids) |>
@@ -112,15 +119,30 @@ sepa.chem <- list.files("./Data/NCAI/SEPA/Chemicals",
 	rbindlist(use.names = TRUE, fill = TRUE)
 
 sepa.chem <- sepa.chem[i = order(`Date Sampled`), j = , by = ]
-
-phosphates <- sepa.chem |>
+# Phosphorus
+phosphorus <- sepa.chem |>
 	_[i = grep("Total Phosph", Determinand)] |>
 	_[i = grep("mg/L", Unit)]
-	
+phosphorus <- phosphorus[i = !grep("No NGR found", NGR), j = , by = ]
+# Nitrates
 nitrates <- sepa.chem |>
-	_[i = grep("Nitrate", Determinand)] |>
-	_[i = grep("mg/L", Unit)]
-fwrite(phosphates, "./Data/NCAI/SEPA Phosphorus.csv")
+  _[i = grep("Nitrate", Determinand)] |>
+  _[i = grep("mg/L", Unit)]
+nitrates <- nitrates[i = !grep("No NGR found", NGR), j = , by = ]
+# NGR to 27700; both phosphorus and nitrates
+phosphorus[i = , j = c("Quadrant", "Easting", "Northing") := tstrsplit(NGR, " "), by = ]
+phosphorus <- merge(ngr2en, phosphorus, by = "Quadrant")
+phosphorus[i = , 
+           j = `:=`(Easting = as.numeric(paste0(EastID, Easting)), 
+                    Northing = as.numeric(paste0(NorthID, Northing))),
+           by = ]
+nitrates[i = , j = c("Quadrant", "Easting", "Northing") := tstrsplit(NGR, " "), by = ]
+nitrates <- merge(ngr2en, nitrates, by = "Quadrant")
+nitrates[i = , 
+         j = `:=`(Easting = as.numeric(paste0(EastID, Easting)), 
+                  Northing = as.numeric(paste0(NorthID, Northing))),
+         by = ]
+fwrite(phosphorus, "./Data/NCAI/SEPA Phosphorus.csv")
 fwrite(nitrates, "./Data/NCAI/SEPA Nitrates.csv")
 
 #### Water quality ####
@@ -184,14 +206,6 @@ for(i in 1:length(abstractions)) {
 # join by authorisation number to get coordinates
 abstractions <- rbindlist(abstractions, use.names = TRUE, fill = TRUE)[, 1:4] |>
   merge(abstr.coords[, list(`Auth No`, NGR)], y = _, by.x = "Auth No", by.y = "Authorisation")
-# SEPA NGR to easting-northing
-ngr2en <- data.table(Quadrant = c("HU", "HY", "NB", "NC", "ND", "NF", "NG", "NH", "NJ", "NK", 
-                              "NM", "NN", "NO", "NR", "NS", "NT", "NX", "NY"),
-                     EastID = c("4", "3", "1", "2", "3", "", "1", "2", "3", "4", 
-                              "1", "2", "3", "1", "2", "3", "2", "3"),
-                     NorthID = c("11", "10", rep("9", 3), rep("8", 5), rep("7", 3), 
-                               rep("6", 3), rep("5", 2))
-                     )
 # reconstruct metres from original NGR encoding
 abstractions[i = , j = c("Quadrant", "Easting", "Northing") := tstrsplit(NGR, " "), by = ]
 abstractions <- merge(ngr2en, abstractions, by = "Quadrant")
