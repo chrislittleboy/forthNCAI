@@ -2,10 +2,15 @@ library(data.table)
 library(sf)
 library(terra)
 library(ggplot2)
-setwd("/home/miell/Desktop/FORTH2O Data Specialist")
-alldata <- list.files("Data/NCAI", 
+setwd("C:/Users/miell/OneDrive/Desktop/FORTH2O Data Specialist")
+csvdata <- list.files("Data/NCAI", 
                       pattern = ".csv", full = TRUE) |>
   lapply(fread)
+shapedata <- list.files("Data/NCAI",
+                      pattern = ".shp", full = TRUE) |>
+  lapply(read_sf)
+alldata <- list(csvdata, shapedata) |>
+  unlist(recursive = FALSE)
 
 # FORTH2O area of interest
 f2oaoi <- read_sf("Data/gov/census/geog/f2o/f2oaoi.shp")
@@ -16,11 +21,16 @@ f2o.hg <- st_intersection(f2oaoi, hg)
 
 mask.by.fwb <- function(x) {
   mask(crop(x))}
-
-allnames <- lapply(list.files("Data/NCAI", pattern = ".csv"), 
+# Now, we extract dataset names
+csvnames <- lapply(list.files("Data/NCAI", pattern = ".csv"), 
                    function(X) gsub(".csv", "", X)) |>
-  unlist()
-
+  unlist(recursive = FALSE)
+shapenames <- lapply(list.files("Data/NCAI", pattern = ".shp"), 
+                   function(X) gsub(".shp", "", X)) |>
+  unlist(recursive = FALSE)
+# combine
+allnames <- c(csvnames, shapenames)
+# assign to the list of dataframes
 alldata <- setNames(alldata, allnames)
 #### Spatial filtering by Forth Water Basin ####
 
@@ -76,7 +86,7 @@ fwb.bw.loc <- c(
 bath <- alldata[["Bathing Waters Application"]] |>
   _[i = `Bathing water` %in% c(fwb.bw.loc), j = , by = ]
 
-# British Birding Survey (problem: ETRS89 (4258))
+# British Birding Survey
 bird <- st_as_sf(alldata[["British Birding Survey"]], coords = c("ETRS89Long", "ETRS89Lat"), crs = 4258) |>
   st_transform(crs = st_crs(f2o.hg)) |>
   st_intersection(f2o.hg)
@@ -121,14 +131,36 @@ stag <- st_as_sf(alldata[["River level (Stage)"]], coords = c("station_carteasti
                  crs = 27700) |>
   st_intersection(f2o.hg)
 # Water quality
-wq <- st_as_sf(alldata[["Water Quality"]], coords = c("EASTING", "NORTHING"), 
+wq <- st_as_sf(alldata[["Water Quality"]], coords = c("easting", "northing"), 
                crs = 27700) |>
   st_intersection(f2o.hg)
 # Phosphorus
-p <- subset(alldata[["SEPA Phosphorus"]], !is.na(Easting) & !is.na(Northing)) |>
+phos <- subset(alldata[["SEPA Phosphorus"]], !is.na(Easting) & !is.na(Northing)) |>
   st_as_sf(coords = c("Easting", "Northing"), crs = 27700) |>
   st_intersection(f2o.hg)
 # Nitrates
-n <- subset(alldata[["SEPA Nitrates"]], !is.na(Easting) & !is.na(Northing)) |>
+nitr <- subset(alldata[["SEPA Nitrates"]], !is.na(Easting) & !is.na(Northing)) |>
   st_as_sf(coords = c("Easting", "Northing"), crs = 27700) |>
   st_intersection(f2o.hg)
+# Abstractions
+abst <- st_as_sf(alldata[["Abstractions"]], coords = c("Easting", "Northing"), crs = 27700) |>
+  st_intersection(f2o.hg)
+# Site conditions
+site <- st_intersection(alldata[["Site Conditions"]], f2o.hg)
+
+# Write all datasets as shapefiles
+setwd("C:/Users/miell/OneDrive/Desktop/FORTH2O Data Specialist/Outputs/forthNCAI datasets")
+fwrite(fish, "fishery-stats.csv")
+fwrite(bath, "bathing-waters.csv")
+write_sf(bird, "birding-survey.shp")
+write_sf(bfly, "butterflies.shp")
+write_sf(gwl, "ground-water-lvl.shp")
+fwrite(outd, "outdoor-visits.csv")
+write_sf(stag, "river-stage.shp")
+write_sf(wq, "water-qual.shp")
+write_sf(phos, "phosphorus.shp")
+write_sf(nitr, "nitrates.shp")
+write_sf(abst, "abstractions.shp")
+
+site$FID <- NULL
+write_sf(site, "site-conditions.gpkg")

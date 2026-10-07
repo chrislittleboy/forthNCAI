@@ -2,9 +2,12 @@ library(data.table)
 library(haven)
 library(rvest)
 library(readxl)
+library(jsonlite)
+library(sf)
+library(ggplot2)
 
 ###### DOWNLOANDING AND PROCESSING DATA TO COMPUTE NCAI
-setwd("/home/miell/Desktop/FORTH2O Data Specialist")
+setwd("C:/Users/miell/OneDrive/Desktop/FORTH2O Data Specialist")
 #### Outdoor visits per week ####
 # get file paths for social_public datasets
 ovpw.folder <- "./Data/NCAI/Outdoor visits per week"
@@ -160,21 +163,35 @@ sepa.qual.cols <- lapply(sepa.qual.cols,
 
 setnames(sepa.qual.data, sepa.qual.cols)
 # long data format
-sepa.qual.data <- melt(sepa.qual.data, id.vars = which(idcols))
+sepa.qual.data <- melt(sepa.qual.data, 
+	id.vars = which(idcols), 
+	value.name = "Value")
 # split variable column
 # then, all "" turn into NA
 sepa.qual.data |>
 	_[
 	i = , 
-	j = c("Year", "Variable") := tstrsplit(variable, " ", keep = 1:2),
+	j = c("Year", "Param") := tstrsplit(variable, " ", keep = 1:2),
 	by = ] |>
 	_[
 	i = ,
-	j = value := ifelse(value == "", NA, value)]
+	j = Value := ifelse(Value == "", NA, Value)]
 # value as last column
-setcolorder(sepa.qual.data, "value", after = ncol(sepa.qual.data))
+setcolorder(sepa.qual.data, "Value", after = ncol(sepa.qual.data))
 # merge data and info
-sepa.qual <- merge(sepa.qual.info, sepa.qual.data, by = "ID")
+sepa.qual <- merge(sepa.qual.info, sepa.qual.data, by = c("ID", "Name"))
+# rename some columns
+setnames(sepa.qual, 
+	old = c("REPORTING_LATITUDE", "REPORTING_LONGITUDE"),
+	new = c("long", "lat"))
+sepa.qual <- sepa.qual[i = !is.na(Value), 
+	j = setdiff(
+		colnames(sepa.qual), 
+		c("variable", "HMAWB_REASON", "AREA_SQ_KM")
+	), 
+	by = ,
+	with = FALSE]
+colnames(sepa.qual) <- tolower(colnames(sepa.qual))
 fwrite(sepa.qual, "./Data/NCAI/Water Quality.csv")
 #### Fishing (nets and rods) ####
 list.files("./Data/NCAI/Fishing",
@@ -214,3 +231,28 @@ abstractions[i = , j = `:=`(Easting = paste0(EastID, Easting), Northing = paste0
 # sum them up
 abstractions[i = , j = sum(`Annual Volume`), by = list(`Auth No`, Year)]
 fwrite(abstractions, "./Data/NCAI/Abstractions.csv")
+#### NatureScot Sites ####
+# SSSI locations
+sssi <- read_sf("./Data/NCAI/NatureScot/Sites_of_Special_Scientific_Interest_-3483580485842268342/Sites_of_Special_Scientific_Interest.shp")
+# Site conditions (from the GitHub repo)
+siteconds <- list.dirs("./Data/NCAI/NatureScot/sl./sitelink-api-mirror-main/mirror/sitelink-api/v1/sites",
+                               recursive = FALSE) |>
+  list.files(full.names = TRUE) |>
+  lapply(fromJSON)
+# Extract EU code and site features (including favourable/unfavourable) from siteconds
+siteconds <- lapply(siteconds, 
+              function(X) tryCatch(cbind(euCode = X[["euCode"]], X[["features"]]), error = function(e) return(NA))
+              )
+siteconds <- siteconds[sapply(siteconds, function(X) is.data.frame(X))] |>
+  rbindlist(use.names = TRUE, fill = TRUE)
+siteconds <- siteconds[i = !is.na(conditionLatest) & !is.na(conditionSummary), 
+           j = list(euCode, category, lastVisitDate, conditionLatest, conditionSummary, name)]
+# TODO: UNION OF POLYGONS (otherwise, full outer join)
+sssi.list <- split.data.frame(sssi, sssi[["EUROPEAN_C"]]) |>
+  lapply(function(X) st_union(X[["geometry"]]))
+siteconds <- data.frame(euCode = names(sssi.list), geometry = do.call(c, sssi.list)) |>
+  merge(siteconds, by = "euCode")
+siteconds <- subset(siteconds, conditionSummary %in% c("Favourable", "Unfavourable", "Recovering")) |>
+	st_as_sf(crs = st_crs(27700))
+write_sf(siteconds, "./Data/NCAI/Site Conditions.shp", row.names = FALSE)
+
