@@ -1,4 +1,4 @@
-## Process data from the expert survey on importance of ecosystem services
+## Clean data from the expert survey on importance of ecosystem services
 ## Kate O'Hara 
 ## 02-07-2026
 
@@ -68,12 +68,28 @@ codebook <- tibble::tibble(
 stopifnot(length(codebook$short) == ncol(raw), !anyDuplicated(codebook$short))
 
 # Query this like this:
-what_is <- function(x) codebook$original[codebook$short %in% x]
-what_is("expertise")
+# what_is <- function(x) codebook$original[codebook$short %in% x]
+# what_is("expertise")
 # Or, e.g.
-dplyr::filter(codebook, stringr::str_detect(short, "pollin"))
+# dplyr::filter(codebook, stringr::str_detect(short, "pollin"))
+# Use this for help with reg ex later:
+# vignette("regular-expressions", package = "stringr")
 
-# Insert code to reject if any permissions are not given. 
+# Apply new variables by matching to the codebook:
+names(raw) <- codebook$short[match(names(raw), codebook$original)]
+# View(raw)
 
+# Make working dataset
+d <- raw |> 
+  filter(if_all(starts_with("permit"), \(x) x == "Yes")) |> 
+  select(!starts_with("permit"))
+
+# View(d)         
+
+# Save a copy with a date on it
+write_csv(d, file.path("imp_wts_survey", format(Sys.time(), "imp_wts_svy_clean_%Y-%m-%d_%H:%M:%S")))
+
+# Next step: produce_importance_weights.R
+####
 
 
